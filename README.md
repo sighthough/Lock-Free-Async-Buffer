@@ -3,7 +3,7 @@ Technical Specification: Lock-Free 3-Slot Asynchronous Buffer Matrix
 
 # Technical Specification: Lock-Free 3-Slot Asynchronous Buffer Matrix
 
-Try the demo~! (here)[https://sighthough.github.io/Lock-Free-Async-Buffer/]
+Try the demo~! [here](https://sighthough.github.io/Lock-Free-Async-Buffer/)
 
 ### Core Objective
 
