@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Showdown: Buffer Delivery Methods</title>
+    <style>
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #58a6ff;
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            color: #8b949e;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .controls-panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        button {
+            background-color: #da3633;
+            color: #ffffff;
+            border: 1px solid rgba(240,246,252,0.1);
+            border-radius: 6px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #f85149; }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .status-light {
+            font-family: monospace;
+            font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: #21262d;
+            border: 1px solid #30363d;
+            margin-left: auto;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: border-color 0.2s;
+        }
+        .card.frozen {
+            border-color: #f85149 !important;
+        }
+        .card h2 {
+            margin: 0 0 5px 0;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .method-desc {
+            color: #8b949e;
+            font-size: 12px;
+            line-height: 1.4;
+            height: 50px;
+            margin-bottom: 10px;
+        }
+        canvas {
+            width: 100%;
+            height: 180px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+        }
+        .freeze-overlay {
+            position: absolute;
+            top: 75px;
+            left: 16px;
+            right: 16px;
+            height: 180px;
+            background: rgba(248, 81, 73, 0.15);
+            color: #ff7b72;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+            border-radius: 6px;
+            backdrop-filter: blur(1px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.1s;
+        }
+        .card.frozen .freeze-overlay { opacity: 1; }
+        .telemetry-table {
+            width: 100%;
+            margin-top: 15px;
+            border-collapse: collapse;
+        }
+        .telemetry-table td {
+            padding: 6px 0;
+            border-bottom: 1px solid #21262d;
+            font-size: 13px;
+        }
+        .telemetry-table tr:last-child td { border-bottom: none; }
+        .telemetry-table td:last-child {
+            text-align: right;
+            font-family: monospace;
+            font-weight: 700;
+        }
+        .t-current { color: #e6edf3; }
+        .t-avg { color: #8b949e; }
+        .t-peak { color: #ff7b72; }
+        
+        .color-yours { color: #58a6ff; }
+        .color-double { color: #d29922; }
+        .color-queue { color: #bc8cff; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Data Buffering Pipeline Architecture Arena</h1>
+    <div class="subtitle">Evaluating high-frequency (1,280 Hz) telemetry ingestion pipelines under intense processing engine drops.</div>
+
+    <div class="controls-panel">
+        <button onclick="triggerExplosion()">Trigger 50ms GPU Hitch [Spacebar]</button>
+        <label class="checkbox-container">
+            <input type="checkbox" id="auto-loop-chk"> Auto-trigger hitch every 2.5 seconds
+        </label>
+        <div id="system-status" class="status-light" style="color: #56d364;">● ENGINE NOMINAL</div>
+    </div>
+
+    <div class="grid-3">
+        <div class="card" id="card-yours">
+            <h2 class="color-yours">1. Your 3-Slot Asynchronous</h2>
+            <div class="method-desc">Lock-free A-B-C circular configuration. The kernel overwrites the oldest inactive register via atomic pointers. Completely non-blocking.</div>
+            <canvas id="canvas-yours"></canvas>
+            <div class="freeze-overlay">THREAD ISOLATED (ALIVE)</div>
+            <table class="telemetry-table">
+                <tr><td>Real Input Age</td><td id="yours-cur" class="t-current">0.00 ms</td></tr>
+                <tr><td>Session Average</td><td id="yours-avg" class="t-avg">0.00 ms</td></tr>
+                <tr><td>Peak Hitch Spike</td><td id="yours-peak" class="t-peak">0.00 ms</td></tr>
+            </table>
+        </div>
+
+        <div class="card" id="card-double">
+            <h2 class="color-double">2. Blocking Double-Buffer</h2>
+            <div class="method-desc">Classic Mutex-locked dual exchange. When the renderer is busy or stalls, it holds the lock. The 1,280 Hz kernel thread physically stalls waiting to write.</div>
+            <canvas id="canvas-double"></canvas>
+            <div class="freeze-overlay">⚠️ KERNEL STALLED</div>
+            <table class="telemetry-table">
+                <tr><td>Real Input Age</td><td id="double-cur" class="t-current">0.00 ms</td></tr>
+                <tr><td>Session Average</td><td id="double-avg" class="t-avg">0.00 ms</td></tr>
+                <tr><td>Peak Hitch Spike</td><td id="double-peak" class="t-peak">0.00 ms</td></tr>
+            </table>
+        </div>
+
+        <div class="card" id="card-queue">
+            <h2 class="color-queue">3. FIFO Accumulation Queue</h2>
+            <div class="method-desc">Linear event array queue. Captures all ticks sequentially. When a frame drops, messages pile up; the engine experiences cascading catch-up lag.</div>
+            <canvas id="canvas-queue"></canvas>
+            <div class="freeze-overlay">⚠️ QUEUE BACKLOGGING</div>
+            <table class="telemetry-table">
+                <tr><td>Real Input Age</td><td id="queue-cur" class="t-current">0.00 ms</td></tr>
+                <tr><td>Session Average</td><td id="queue-avg" class="t-avg">0.00 ms</td></tr>
+                <tr><td>Peak Hitch Spike</td><td id="queue-peak" class="t-peak">0.00 ms</td></tr>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // High-fidelity absolute mouse coordinate buffer with precision timestamps
+    const mouseInputHistory = [];
+    let currentX = window.innerWidth / 2;
+    let currentY = window.innerHeight / 2;
+
+    window.addEventListener('mousemove', (e) => {
+        currentX = e.clientX;
+        currentY = e.clientY;
+        mouseInputHistory.push({ x: currentX, y: currentY, t: performance.now() });
+        if (mouseInputHistory.length > 3000) mouseInputHistory.shift();
+    });
+
+    // Sample real cursor path history if available, else fallback cleanly
+    function getHistoricalInputAt(targetTime) {
+        if (mouseInputHistory.length === 0) return { x: currentX, y: currentY, t: targetTime };
+        let selected = mouseInputHistory[mouseInputHistory.length - 1];
+        for (let i = mouseInputHistory.length - 1; i >= 0; i--) {
+            if (mouseInputHistory[i].t <= targetTime) {
+                selected = mouseInputHistory[i];
+                break;
+            }
+        }
+        return { x: selected.x, y: selected.y, t: targetTime };
+    }
+
+    // --- PIPELINE DATA STRUCTURE SIMULATIONS ---
+    
+    // 1. Lock-Free 3-Slot Configuration
+    class AsyncThreeSlot {
+        constructor() {
+            this.slots = [null, null, null];
+            this.pIdx = 0; this.cIdx = 1; this.mrrIdx = 2;
+        }
+        write(packet) {
+            this.slots[this.pIdx] = packet;
+            this.mrrIdx = this.pIdx;
+            this.pIdx = [0, 1, 2].find(i => i !== this.cIdx && i !== this.mrrIdx);
+        }
+        read() {
+            this.cIdx = this.mrrIdx;
+            return this.slots[this.cIdx];
+        }
+    }
+
+    // 2. Thread-Blocking Double Buffer
+    class BlockingDoubleBuffer {
+        constructor() {
+            this.slots = [null, null];
+            this.writeIdx = 0; this.readIdx = 1;
+            this.isLocked = false;
+            this.lastValidPacket = null;
+        }
+        write(packet) {
+            if (this.isLocked) {
+                // Kernel clock is locked out by Mutex thread sync; drops/stalls current telemetry frame
+                return; 
+            }
+            this.slots[this.writeIdx] = packet;
+            let tmp = this.writeIdx;
+            this.writeIdx = this.readIdx;
+            this.readIdx = tmp;
+            this.lastValidPacket = this.slots[this.readIdx];
+        }
+        read() {
+            return this.lastValidPacket;
+        }
+    }
+
+    // 3. FIFO Accumulation Queue
+    class FIFOQueue {
+        constructor() { this.queue = []; }
+        write(packet) { this.queue.push(packet); }
+        read() {
+            // Pulls next historical packet in line sequentially
+            return this.queue.length > 0 ? this.queue.shift() : null;
+        }
+    }
+
+    // Architecture Engine Instances
+    const pipeYours = new AsyncThreeSlot();
+    const pipeDouble = new BlockingDoubleBuffer();
+    const pipeQueue = new FIFOQueue();
+
+    // Infrastructure Timers
+    let engineTime = performance.now();
+    let lastKernelTickTime = engineTime;
+    let hitchTimeRemaining = 0;
+
+    // Instrumentation Performance Metric Trackers
+    const metrics = {
+        yours:  { cur: 0, sum: 0, count: 0, peak: 0 },
+        double: { cur: 0, sum: 0, count: 0, peak: 0 },
+        queue:  { cur: 0, sum: 0, count: 0, peak: 0 }
+    };
+
+    // UI Handle Map
+    const UI = {
+        status: document.getElementById('system-status'),
+        autoLoop: document.getElementById('auto-loop-chk'),
+        cards: {
+            yours: document.getElementById('card-yours'),
+            double: document.getElementById('card-double'),
+            queue: document.getElementById('card-queue')
+        },
+        canvases: {
+            yours: document.getElementById('canvas-yours').getContext('2d'),
+            double: document.getElementById('canvas-double').getContext('2d'),
+            queue: document.getElementById('canvas-queue').getContext('2d')
+        }
+    };
+
+    function triggerExplosion() {
+        if (hitchTimeRemaining <= 0) {
+            hitchTimeRemaining = 50.0; // Queue a hard 50ms block
+        }
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            e.preventDefault();
+            triggerExplosion();
+        }
+    });
+
+    // Auto Loop Engine Interrupter
+    setInterval(() => {
+        if (UI.autoLoop.checked) triggerExplosion();
+    }, 2500);
+
+    function initCanvasResolution() {
+        ['canvas-yours', 'canvas-double', 'canvas-queue'].forEach(id => {
+            let el = document.getElementById(id);
+            el.width = el.clientWidth;
+            el.height = el.clientHeight;
+        });
+    }
+    window.addEventListener('resize', initCanvasResolution);
+    initCanvasResolution();
+
+    // Main Game Thread Simulation Pacing Loop
+    function frameUpdateStep(timestamp) {
+        let realFrameDelta = timestamp - engineTime;
+        engineTime = timestamp;
+
+        if (hitchTimeRemaining > 0) {
+            let delay = hitchTimeRemaining;
+            hitchTimeRemaining = 0;
+
+            // Engage standard frame processing lock simulation
+            UI.status.innerText = "⚠️ GPU HIT CH: LOCK CONGESTION";
+            UI.status.style.color = "#f85149";
+            UI.cards.double.classList.add('frozen');
+            UI.cards.queue.classList.add('frozen');
+
+            pipeDouble.isLocked = true; // Mutex acquired by rendering engine
+
+            // Process synchronous clock tick history across the frozen hardware state duration
+            let hitchStart = performance.now();
+            while (performance.now() - hitchStart < delay) {
+                // High-Frequency Hardware Kernel keeps firing events every 0.78125 ms (1,280 Hz)
+                let virtualTime = timestamp + (performance.now() - hitchStart);
+                simulateKernelPipelines(virtualTime);
+            }
+
+            pipeDouble.isLocked = false; // Release Mutex lock
+            engineTime += delay; 
+            realFrameDelta += delay;
+        } else {
+            UI.status.innerText = "● ENGINE NOMINAL";
+            UI.status.style.color = "#56d364";
+            UI.cards.yours.classList.remove('frozen');
+            UI.cards.double.classList.remove('frozen');
+            UI.cards.queue.classList.remove('frozen');
+        }
+
+        // Catch up natural timeline progression between render ticks
+        simulateKernelPipelines(engineTime);
+
+        // Process Render Read Ingestion Steps
+        processEngineTelemetry(engineTime);
+
+        requestAnimationFrame(frameUpdateStep);
+    }
+
+    // High Frequency Kernel Processing Pipeline Clock
+    function simulateKernelPipelines(upToTime) {
+        const tickRate = 0.78125; // Exact 1,280 Hz Interval (No Floating-Point Drift)
+        while (lastKernelTickTime + tickRate <= upToTime) {
+            lastKernelTickTime += tickRate;
+            let packet = getHistoricalInputAt(lastKernelTickTime);
+
+            // Ingest to all buffer pipelines simultaneously
+            pipeYours.write(packet);
+            pipeDouble.write(packet);
+            pipeQueue.write(packet);
+        }
+    }
+
+    function processEngineTelemetry(renderFrameTime) {
+        // 1. Pull 3-Slot Asynchronous Node
+        let dataYours = pipeYours.read();
+        calculateTelemetryMetrics('yours', dataYours, renderFrameTime);
+        renderPipelineVisuals(UI.canvases.yours, dataYours, '#58a6ff', metrics.yours.cur);
+
+        // 2. Pull Double-Buffered Node
+        let dataDouble = pipeDouble.read();
+        calculateTelemetryMetrics('double', dataDouble, renderFrameTime);
+        renderPipelineVisuals(UI.canvases.double, dataDouble, '#d29922', metrics.double.cur);
+
+        // 3. Pull FIFO Queue Node (Simulating a single packet consume action per frame loop)
+        let dataQueue = pipeQueue.read();
+        calculateTelemetryMetrics('queue', dataQueue, renderFrameTime);
+        renderPipelineVisuals(UI.canvases.queue, dataQueue, '#bc8cff', metrics.queue.cur);
+
+        // Flush calculations out to DOM view
+        updateMetricLabels();
+    }
+
+    function calculateTelemetryMetrics(key, packet, renderFrameTime) {
+        if (!packet) return;
+        
+        // Exact real time difference between human action capture and game processing consumption
+        let currentAge = Math.max(0, renderFrameTime - packet.t);
+        
+        metrics[key].cur = currentAge;
+        metrics[key].sum += currentAge;
+        metrics[key].count++;
+        if (currentAge > metrics[key].peak) {
+            metrics[key].peak = currentAge;
+        }
+    }
+
+    function renderPipelineVisuals(ctx, packet, color, age) {
+        let cv = ctx.canvas;
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        
+        // Grid Lines mapping
+        ctx.strokeStyle = '#21262d';
+        ctx.lineWidth = 1;
+        for (let i = 20; i < cv.width; i += 20) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, cv.height); ctx.stroke();
+        }
+
+        if (!packet) return;
+        
+        let rect = cv.getBoundingClientRect();
+        let targetX = Math.max(15, Math.min(cv.width - 15, packet.x - rect.left));
+        let targetY = Math.max(15, Math.min(cv.height - 15, packet.y - rect.top));
+
+        // Display Data Node Coordinates Position Indicator
+        ctx.beginPath();
+        ctx.arc(targetX, targetY, 10, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        // Overlay Age Telemetry
+        ctx.font = "bold 13px monospace";
+        ctx.fillStyle = "#8b949e";
+        ctx.fillText(`Age: ${age.toFixed(2)}ms`, 12, cv.height - 15);
+    }
+
+    function updateMetricLabels() {
+        ['yours', 'double', 'queue'].forEach(key => {
+            document.getElementById(`${key}-cur`).innerText = `${metrics[key].cur.toFixed(2)} ms`;
+            let avg = metrics[key].count > 0 ? (metrics[key].sum / metrics[key].count) : 0;
+            document.getElementById(`${key}-avg`).innerText = `${avg.toFixed(2)} ms`;
+            document.getElementById(`${key}-peak`).innerText = `${metrics[key].peak.toFixed(2)} ms`;
+        });
+    }
+
+    // Ignite Application Simulation Pipeline
+    requestAnimationFrame(frameUpdateStep);
+</script>
+</body>
+</html>
