@@ -68,3 +68,6 @@ However, because the Writer thread freely overwrites older data in the idle slot
 Why it happens: If the Writer registers a MouseDown event in Buffer A, and then immediately updates the data matrix with a MouseUp event in Buffer B before the Reader thread can execute its next read cycle, the Reader will jump straight to the freshest state (Buffer B) and completely miss the fact that a click ever occurred.
 
 Architectural Fix: For discrete interactions where data loss is unacceptable, this 3-slot buffer should either be paired with a secondary, parallel atomic event queue, or the data packet itself must use a persistent bitmask to accumulate states until the Reader explicitly acknowledges and clears them.
+
+
+Made by sighthough with the help of googles gemini 3.5 ai
