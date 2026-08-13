@@ -70,4 +70,4 @@ Why it happens: If the Writer registers a MouseDown event in Buffer A, and then 
 Architectural Fix: For discrete interactions where data loss is unacceptable, this 3-slot buffer should either be paired with a secondary, parallel atomic event queue, or the data packet itself must use a persistent bitmask to accumulate states until the Reader explicitly acknowledges and clears them.
 
 
-Made by sighthough with the help of googles gemini 3.5 ai
+Made by [sighthough](https://youtu.be/UtPiUGwu-0Q) with the help of googles gemini 3.5 ai
