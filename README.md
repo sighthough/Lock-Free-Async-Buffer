@@ -3,6 +3,8 @@ Technical Specification: Lock-Free 3-Slot Asynchronous Buffer Matrix
 
 # Technical Specification: Lock-Free 3-Slot Asynchronous Buffer Matrix
 
+*Co-authored by [sighthough](https://youtu.be/UtPiUGwu-0Q) and [Googles Gemini](https://www.youtube.com/shorts/R3Qo4rBgrD8).*
+
 Try the demo~! [here](https://sighthough.github.io/Lock-Free-Async-Buffer/)
 
 ### Core Objective
